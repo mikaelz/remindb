@@ -15,8 +15,8 @@ import (
 
 	"github.com/radimsem/remindb/internal/contentid"
 	"github.com/radimsem/remindb/internal/fileext"
-	"github.com/radimsem/remindb/internal/ignore"
 	"github.com/radimsem/remindb/internal/loghelper"
+	"github.com/radimsem/remindb/internal/pathmatch"
 	"github.com/radimsem/remindb/pkg/compiler"
 	"github.com/radimsem/remindb/pkg/config"
 	"github.com/radimsem/remindb/pkg/diff"
@@ -69,7 +69,8 @@ type Loop struct {
 	walkFn            func(root string, fn fs.WalkDirFunc) error
 	modTimes          map[string]time.Time
 	logger            *slog.Logger
-	ignore            *ignore.Matcher
+	ignore            *pathmatch.Matcher
+	pinned            *pathmatch.Matcher
 	compileOpts       []compiler.Option
 	status            *rescanstat.Status
 	rescanLog         *rescanlog.Sink
@@ -101,9 +102,14 @@ func New(st *store.Store, dir string, interval time.Duration, opts ...Option) (*
 		status = rescanstat.New()
 	}
 
-	matcher, err := ignore.Load(dir)
+	matcher, err := pathmatch.LoadIgnore(dir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load: %s: %w", ignore.Path, err)
+		return nil, fmt.Errorf("failed to load: %s: %w", pathmatch.IgnorePath, err)
+	}
+
+	pinMatcher, err := pathmatch.LoadPinned(dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load: %s: %w", pathmatch.PinnedPath, err)
 	}
 
 	return &Loop{
@@ -118,6 +124,7 @@ func New(st *store.Store, dir string, interval time.Duration, opts ...Option) (*
 		modTimes:          make(map[string]time.Time),
 		logger:            logger,
 		ignore:            matcher,
+		pinned:            pinMatcher,
 		compileOpts:       compiler.ConfigOptions(o.compileConfig),
 		status:            status,
 		rescanLog:         o.rescanLog,
@@ -296,11 +303,15 @@ func (r *Loop) scan(ctx context.Context) {
 		return
 	}
 
+	pins := compiler.ResolvePins(r.dir, changed, r.pinned)
+
 	copts := append([]compiler.Option{
 		compiler.WithPaths(changed),
 		compiler.WithMessage("rescan"),
 		compiler.WithCompileRoot(r.dir),
 		compiler.WithLogger(r.logger),
+		compiler.WithPins(pins),
+		compiler.WithPinned(r.pinned),
 	}, r.compileOpts...)
 
 	result, err := compiler.Compile(ctx, r.store, copts...)

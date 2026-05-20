@@ -2,13 +2,15 @@ package bench
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/radimsem/remindb/internal/fileext"
-	"github.com/radimsem/remindb/internal/ignore"
+	"github.com/radimsem/remindb/internal/pathmatch"
+	"github.com/radimsem/remindb/internal/tempfile"
 	"github.com/radimsem/remindb/pkg/compiler"
 	"github.com/radimsem/remindb/pkg/config"
 	"github.com/radimsem/remindb/pkg/store"
@@ -34,9 +36,9 @@ func stageBench(ctx context.Context, sourceDir string) (*benchStage, error) {
 		return nil, fmt.Errorf("failed to resolve: %s: %w", sourceDir, err)
 	}
 
-	matcher, err := ignore.Load(userDir)
+	matcher, err := pathmatch.LoadIgnore(userDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load: %s: %w", ignore.Path, err)
+		return nil, fmt.Errorf("failed to load: %s: %w", pathmatch.IgnorePath, err)
 	}
 
 	tmpRoot, err := os.MkdirTemp("", "remindb-bench-*")
@@ -47,6 +49,11 @@ func stageBench(ctx context.Context, sourceDir string) (*benchStage, error) {
 		tmpRoot: tmpRoot,
 		dbPath:  filepath.Join(tmpRoot, "memory.db"),
 		srcDir:  filepath.Join(tmpRoot, "src"),
+	}
+
+	if err := copySidecars(userDir, stage.srcDir); err != nil {
+		stage.cleanup()
+		return nil, err
 	}
 
 	if err := copySourceTree(userDir, stage.srcDir, matcher); err != nil {
@@ -96,8 +103,36 @@ func copyFile(src, dst string) error {
 	return err
 }
 
+// Copy the .remindb/ sidecars into the staged tree.
+func copySidecars(srcRoot, dstRoot string) error {
+	sidecars := []string{
+		pathmatch.IgnoreFileName,
+		tempfile.FileName,
+		pathmatch.PinnedFileName,
+	}
+
+	for _, name := range sidecars {
+		src := filepath.Join(srcRoot, config.DirName, name)
+		if _, err := os.Stat(src); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("failed to stat: %s: %w", src, err)
+		}
+
+		dst := filepath.Join(dstRoot, config.DirName, name)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return fmt.Errorf("failed to create: %s: %w", filepath.Dir(dst), err)
+		}
+		if err := copyFile(src, dst); err != nil {
+			return fmt.Errorf("failed to copy: %s: %w", src, err)
+		}
+	}
+	return nil
+}
+
 // Mirror every parsable file from source dir into dst.
-func copySourceTree(src, dst string, matcher *ignore.Matcher) error {
+func copySourceTree(src, dst string, matcher *pathmatch.Matcher) error {
 	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err

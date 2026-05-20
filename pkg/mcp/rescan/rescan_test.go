@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/radimsem/remindb/internal/ignore"
+	"github.com/radimsem/remindb/internal/pathmatch"
 	"github.com/radimsem/remindb/internal/testutil"
 	"github.com/radimsem/remindb/pkg/compiler"
 	"github.com/radimsem/remindb/pkg/config"
@@ -531,7 +531,7 @@ func TestRescanLoop_RespectsIgnore(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "kept.md", "# Kept\n")
 	writeFile(t, dir, "session.jsonl", `{"event":"chat"}`)
-	writeFile(t, dir, ignore.Path, "*.jsonl\n")
+	writeFile(t, dir, pathmatch.IgnorePath, "*.jsonl\n")
 
 	st := testutil.OpenTestDB(t)
 	r := mustRescan(t, st, dir, time.Minute, nil)
@@ -551,15 +551,84 @@ func TestRescanLoop_RespectsIgnore(t *testing.T) {
 
 func TestNewRescanLoop_FailsOnMalformedIgnore(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, ignore.Path, "a//b\n")
+	writeFile(t, dir, pathmatch.IgnorePath, "a//b\n")
 
 	st := testutil.OpenTestDB(t)
 	_, err := New(st, dir, time.Minute)
 	if err == nil {
 		t.Fatal("expected error for malformed ignore file")
 	}
-	if !strings.Contains(err.Error(), ignore.Path) {
-		t.Errorf("error should mention %s, got: %v", ignore.Path, err)
+	if !strings.Contains(err.Error(), pathmatch.IgnorePath) {
+		t.Errorf("error should mention %s, got: %v", pathmatch.IgnorePath, err)
+	}
+}
+
+func TestNewRescanLoop_FailsOnMalformedPinned(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, pathmatch.PinnedPath, "a//b\n")
+
+	st := testutil.OpenTestDB(t)
+	_, err := New(st, dir, time.Minute)
+	if err == nil {
+		t.Fatal("expected error for malformed pinned file")
+	}
+
+	if !strings.Contains(err.Error(), pathmatch.PinnedPath) {
+		t.Errorf("error should mention %s, got: %v", pathmatch.PinnedPath, err)
+	}
+}
+
+func TestRescanLoop_AppliesPinnedSidecarOnChangedFile(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "doc.md", "# Hi\n\nBody.\n")
+	writeFile(t, dir, pathmatch.PinnedPath, "doc.md\n")
+
+	st := testutil.OpenTestDB(t)
+	r := mustRescan(t, st, dir, time.Minute, nil)
+	r.now = func() time.Time { return time.Now().Add(time.Hour) }
+
+	r.scan(context.Background())
+
+	nodes, err := st.GetNodesByFile(context.Background(), "doc.md")
+	if err != nil {
+		t.Fatalf("GetNodesByFile: %v", err)
+	}
+
+	if len(nodes) == 0 {
+		t.Fatal("no nodes for doc.md after rescan")
+	}
+	for i, n := range nodes {
+		if !n.Pinned {
+			t.Errorf("node[%d].Pinned = false, want true (matched .remindb/pinned)", i)
+		}
+	}
+}
+
+func TestRescanLoop_PinnedSidecarDoesNotPinNonMatchingFile(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, dir, "doc.md", "# A\n\nAlpha.\n")
+	writeFile(t, dir, "other.md", "# B\n\nBeta.\n")
+	writeFile(t, dir, pathmatch.PinnedPath, "doc.md\n")
+
+	st := testutil.OpenTestDB(t)
+	r := mustRescan(t, st, dir, time.Minute, nil)
+	r.now = func() time.Time { return time.Now().Add(time.Hour) }
+
+	r.scan(context.Background())
+
+	other, err := st.GetNodesByFile(context.Background(), "other.md")
+	if err != nil {
+		t.Fatalf("GetNodesByFile other.md: %v", err)
+	}
+
+	if len(other) == 0 {
+		t.Fatal("no nodes for other.md")
+	}
+	for i, n := range other {
+		if n.Pinned {
+			t.Errorf("other.md node[%d].Pinned = true, want false (not matched)", i)
+		}
 	}
 }
 
