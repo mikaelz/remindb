@@ -113,11 +113,17 @@ remindb update --force
 
 ### Skills
 
-The public skills live under [`skills/remind/`](skills/remind/SKILL.md) and [`skills/memoize/`](skills/memoize/SKILL.md). They're refreshed by [`vercel-labs/skills`](https://github.com/vercel-labs/skills).
+The public skills live under [`skills/`](skills/): [`remember`](skills/remember/SKILL.md) (the plain-language front door), [`remind`](skills/remind/SKILL.md) (read path), [`memoize`](skills/memoize/SKILL.md) (write path), and [`remindb-setup`](skills/remindb-setup/SKILL.md) (connectivity/config). `remind` and `memoize` use progressive disclosure — a compact `SKILL.md` plus on-demand `references/`. They're refreshed by [`vercel-labs/skills`](https://github.com/vercel-labs/skills).
 
-First-time install (or after adding a new agent):
+First-time install — globally (every detected agent), or scoped to one agent:
 
 ```bash
+# Global — install for all detected agents at once
+npx skills@latest add radimsem/remindb/skills
+```
+
+```bash
+# Scoped — install for one agent
 npx skills@latest add radimsem/remindb/skills -a claude-code
 # -a codex | gemini-cli | opencode | openclaw | hermes-agent | ...
 ```
@@ -235,30 +241,22 @@ Or HTTP, when you want one long-running server that multiple agent sessions (a l
 
 On startup the agent sees the full `Memory*` tool suite alongside its usual toolbox.
 
-Run this once when you first point `serve` at a new workspace. The agent reads the configuration reference and proposes a `.remindb/` setup for your project:
+Once the binary and the plugin are installed, configure the workspace from inside a session with the **`remindb-setup`** skill (installed via `npx skills add`, above) — no copy-paste prompt needed:
 
 ```
-Fetch https://raw.githubusercontent.com/radimsem/remindb/main/docs/configuration.md,
-then do the following for this workspace:
-
-1. Walk the directory. Note which files are stable reference material (READMEs, specs,
-   ADRs, architecture docs), which are generated artifacts, and which change constantly.
-2. Propose .remindb/ignore patterns for build outputs, dependencies, test fixtures,
-   and anything that would add noise without adding signal.
-3. For the stable reference files, propose .remindb/pinned entries so they never age out.
-4. Suggest initial temperatures in .remindb/temperatures.json — higher for files you'll
-   read often, lower for archives or rarely-touched config.
-5. Draft a .remindb/config.json with a decay rate, budget defaults, and rescan interval
-   that fit how this workspace is actually used.
-
-Show me the plan before writing anything to disk.
+/remindb-setup            # interactive — walks you through the .remindb/ config
+/remindb-setup automode   # hands-off — the agent infers the whole setup itself
 ```
 
-Once that's done, the everyday orientation call is simple:
+It authors `.remindb/` (`ignore`/`pinned`/`temperatures.json`/`config.json`), offers to reseed temperatures and pins onto existing nodes, and tells you when a restart is needed to apply `config.json` changes.
+
+Once that's done, talking to your memory is plain language — the **`/remember`** front door routes recall to `remind` and saves to `memoize`, so you never name a tool:
 
 ```
-/remind Call MemoryTree to orient. Then call MemorySearch for "<topic>" with budget 1000
-and MemoryFetch on the top hit. Explain what you learned and which files it came from.
+/remember what did we decide about <topic>? Pull it from memory — don't re-read the files.
+```
+
+It searches the node tree, fetches the top hits under a token budget, and answers from memory, citing which file each fact came from — instead of grepping and re-reading prose it has already seen. The same door takes saves: `/remember note that <fact>` routes to a structured write.
 ```
 
 ## Benchmarks
