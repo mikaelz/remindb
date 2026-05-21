@@ -257,7 +257,6 @@ Once that's done, talking to your memory is plain language — the **`/remember`
 ```
 
 It searches the node tree, fetches the top hits under a token budget, and answers from memory, citing which file each fact came from — instead of grepping and re-reading prose it has already seen. The same door takes saves: `/remember note that <fact>` routes to a structured write.
-```
 
 ## Benchmarks
 
