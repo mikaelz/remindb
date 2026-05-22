@@ -1,6 +1,6 @@
 ---
 name: remindb-setup
-description: Config-first setup wizard for a remindb MCP server — run it as `/remindb-setup` (interactive) or `/remindb-setup automode` (hands-off). Two passes. First-time (no server attached yet): detect the host, author the `.remindb/` config (ignore/pinned/temperatures/config.json) BEFORE compiling, compile the source, seed adjacent context, then wire the MCP env. Verify (server attached): MemoryStats + `remindb://doctor`, reconfigure, and reseed onto existing nodes. Use on first-time workspace memory setup, when remindb tools are missing/misconfigured, on "no results"/wrong-workspace symptoms, or to reconfigure an existing brain.
+description: 'Config-first setup wizard for a remindb MCP server — run it as `/remindb-setup` (interactive) or `/remindb-setup automode` (hands-off). Two passes. First-time (no server attached yet): detect the host, author the `.remindb/` config (ignore/pinned/temperatures/config.json) BEFORE compiling, compile the source, seed adjacent context, then wire the MCP env. Verify (server attached): MemoryStats + `remindb://doctor`, reconfigure, and reseed onto existing nodes. Use on first-time workspace memory setup, when remindb tools are missing/misconfigured, on "no results"/wrong-workspace symptoms, or to reconfigure an existing brain.'
 user-invocable: true
 ---
 
